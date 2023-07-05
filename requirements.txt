@@ -1,0 +1,23 @@
+easydict>=1.9
+# torch>=1.8.1
+# pointnet2_ops_lib @ git+https://github.com/erikwijmans/Pointnet2_PyTorch.git@master#subdirectory=pointnet2_ops_lib
+# torch>=1.8.1+cu101 #@git+https://download.pytorch.org/whl/torch_stable.html
+# pytorch-lightning >= 1.2.8+cu101 @git+https://download.pytorch.org/whl/torch_stable.html
+# scipy>=1.5.4
+# plyfile>=0.7.4
+# xvfbwrapper>=0.2.9
+# plotly>=5.7.0
+# matplotlib>=3.3.4
+
+
+
+# pointnet2_ops_lib @ git+git://github.com/erikwijmans/Pointnet2_PyTorch.git#egg=subdir&subdirectory=pointnet2_ops_lib
+
+# pointnet2 @ git+https://github.com/shaharzuler/Pointnet2_PyTorch.git
+
+
+# pointnet2_ops @  git+https://github.com/shaharzuler/Pointnet2_PyTorch.git
+
+# pip install torch==1.9.0+cu102 torchvision==0.10.0+cu102 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+
+# "git+protocol://git://github.com/erikwijmans/Pointnet2_PyTorch.git/#egg=pkg&subdirectory=pkg_dir"

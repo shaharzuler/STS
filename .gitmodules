@@ -4,3 +4,6 @@
 [submodule "ChamferDistancePytorch"]
 	path = ChamferDistancePytorch
 	url = https://github.com/ThibaultGROUEIX/ChamferDistancePytorch
+[submodule "STS/src/ChamferDistancePytorch"]
+	path = STS/src/ChamferDistancePytorch
+	url = https://github.com/ThibaultGROUEIX/ChamferDistancePytorch
