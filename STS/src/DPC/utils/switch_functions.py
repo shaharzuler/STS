@@ -24,10 +24,8 @@ def model_class_pointer(task_name, model_name):
 
     raise Exception("Unkown arch")
 
-def load_dataset_spectral(hparams): # STS dataset selection
-
+def load_dataset_spectral(hparams): 
     train_dataset = create_sts_dataset(hparams)
-    
     return train_dataset
 
 def choose_optimizer(params, network_parameters):

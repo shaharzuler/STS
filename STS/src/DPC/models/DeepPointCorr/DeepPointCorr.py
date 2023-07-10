@@ -6,10 +6,8 @@ import pointnet2_ops._ext as _ext
 from ....ChamferDistancePytorch.chamfer3D import dist_chamfer_3D
 
 from ...visualization.visualize_api import visualize_pair_corr, visualize_reconstructions
-# from data.point_cloud_db.point_cloud_dataset import PointCloudDataset
 from ..sub_models.dgcnn.dgcnn_modular import DGCNN_MODULAR
 from ..sub_models.dgcnn.dgcnn import get_graph_feature
-# from torch_cluster import knn
 from ...models.correspondence_utils import get_s_t_neighbors
 from ...models.shape_corr_trainer import ShapeCorrTemplate
 from ...models.metrics.metrics import AccuracyAssumeEye, AccuracyAssumeEyeSoft, uniqueness
@@ -17,7 +15,6 @@ from ...models.sub_models.dgcnn.dgcnn import DGCNN as non_geo_DGCNN
 from ...utils import switch_functions
 from ...utils.argparse_init import str2bool
 from ...utils.tensor_utils import knn
-# STS 
 from ....Spectral_Teacher.FM_utils import fm_step
 from ....STS_utils.metrics import compute_geo_dist_batch
 
@@ -216,14 +213,6 @@ class DeepPointCorr(ShapeCorrTemplate):
         self.track_metrics(data)
 
         return data
-
-    # def test_step(self, test_batch, batch_idx): # STS - different rom original
-    #     self.hparams.mode = 'test'
-    #     test_batch = self.covnert_batch_from_spectral_to_DPC(test_batch)
-    #     self.training_step(test_batch, batch_idx, mode='test')
-
-
-    #     return True
 
 
     def visualize(self, batch, mode="train"): 

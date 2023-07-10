@@ -13,8 +13,6 @@ import torch.nn as nn
 
 from ....utils import argparse_init
 
-# from data.datasets_utils import random_rotate_neighs
-
 
 def knn(x, k):
     inner = -2 * torch.matmul(x.transpose(2, 1), x)

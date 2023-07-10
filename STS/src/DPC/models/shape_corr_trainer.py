@@ -124,7 +124,7 @@ class ShapeCorrTemplate(LightningModule):
             self.tracks[name] = val
 
             # self.logger.experiment.add_scalar(name, val, self.current_epoch)  # Old version command
-            self.log_dict({name: val}) #, on_epoch=False) 
+            self.log_dict({name: val})
 
         return dict_of_lists
 
