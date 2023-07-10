@@ -2,6 +2,7 @@
 from argparse import Namespace
 import collections
 import os
+import time
 
 from torch.utils.data import DataLoader
 import torch
@@ -14,6 +15,7 @@ from ..utils import switch_functions
 from .correspondence_utils import square_distance
 from ..utils.tensor_utils import to_numpy
 from .metrics.metrics import AccuracyAssumeEye
+from ..utils.tensor_utils import to_numpy
 
 
 class ShapeCorrTemplate(LightningModule):
@@ -110,7 +112,7 @@ class ShapeCorrTemplate(LightningModule):
         self.train_logs = []
         self.hparams.current_epoch = self.current_epoch
 
-    def on_train_epoch_end(self):
+    def on_train_epoch_end(self, _):
         logs = getattr(self, f"{self.hparams.mode}_logs", None)
         dict_of_lists = {k: [dic[k] for dic in logs] for k in logs[0]}
         for key, lst in dict_of_lists.items():
@@ -170,44 +172,18 @@ class ShapeCorrTemplate(LightningModule):
 
         return c
 
-    def save_inference(self, pred): #TODO add saving of downsampling indices
-        self.hparams.output_inference_dir = self.hparams.output_inference_dir
+    def save_inference(self, pred, checkpoints_path): #TODO add saving of downsampling indices
         os.makedirs(self.hparams.output_inference_dir, exist_ok=True)
-
         with open(os.path.join(self.hparams.output_inference_dir, "orig_model_info.txt"), "w") as f:
-            f.write(f"orig checkpoints: \n{self.hparams.resume_from_checkpoint}")
-        p = pred["P_normalized"].clone()
+            f.write(f"orig checkpoints: \n{checkpoints_path}")
+
+        key=pred['key'][0]
         f =  h5py.File(os.path.join(self.hparams.output_inference_dir, "model_inference.hdf5"), 'a')
-
-        p_file_name = f"p_{pred['id'][0]}"
-        f.create_dataset(
-                    name=p_file_name, 
-                    data=p[0].cpu().numpy(), 
-                    compression="gzip")
-        
-        source_neigh_idxs_file_name = f"source_neigh_idxs_{pred['id'][0]}"
-        f.create_dataset(
-                    name=source_neigh_idxs_file_name, 
-                    data=pred["source"]["neigh_idxs"][0].cpu().numpy(), 
-                    compression="gzip")
-
-        target_neigh_idxs_file_name = f"target_neigh_idxs_{pred['id'][0]}"
-        f.create_dataset(
-                    name=target_neigh_idxs_file_name, 
-                    data=pred["target"]["neigh_idxs"][0].cpu().numpy(), 
-                    compression="gzip")
-
-        source_file_name = f"source_{pred['id'][0]}"
-        f.create_dataset(
-                    name=source_file_name, 
-                    data=pred["source"]["pos"][0].cpu().numpy(), 
-                    compression="gzip")
-
-        target_file_name = f"target_{pred['id'][0]}"
-        f.create_dataset(
-                    name=target_file_name, 
-                    data=pred["target"]["pos"][0].cpu().numpy(), 
-                    compression="gzip")
-
-        # print(f"Saved inference to {os.path.join(self.output_inference_dir, batch['id'][0])}...")
+        f.create_dataset(name=f"p_{key}",                 data=to_numpy(pred["P_normalized"][0]),              compression="gzip")
+        f.create_dataset(name=f"source_neigh_idxs_{key}", data=to_numpy(pred["source"]["neigh_idxs"][0]),      compression="gzip")
+        f.create_dataset(name=f"target_neigh_idxs_{key}", data=to_numpy(pred["target"]["neigh_idxs"][0]),      compression="gzip")
+        f.create_dataset(name=f"source_{key}",            data=to_numpy(pred["source"]["pos"][0]),             compression="gzip")
+        f.create_dataset(name=f"target_{key}",            data=to_numpy(pred["target"]["pos"][0]),             compression="gzip")
+        f.create_dataset(name=f"source_idxs_{key}",       data=to_numpy(self.train_dataset.template_indices),  compression="gzip")
+        f.create_dataset(name=f"target_idxs_{key}",       data=to_numpy(self.train_dataset.unlabeled_indices), compression="gzip")
         f.close()

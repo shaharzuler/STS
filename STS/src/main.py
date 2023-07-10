@@ -48,7 +48,6 @@ def get_trainer(config):
     logger = get_logger(config)
 
     trainer = pl.Trainer(
-        # default_root_dir=config.default_root_dir,
         callbacks=[checkpoint_callback],
         log_gpu_memory="all",
         weights_summary="top",
@@ -60,13 +59,8 @@ def get_trainer(config):
         benchmark=True,  
         gpus=1,
         distributed_backend=None,
-        # num_sanity_val_steps=config.num_sanity_val_steps,
-        # val_check_interval=config.val_check_interval,  # how many times(0.25=4) to run validation each training loop
-        limit_train_batches=config.limit_train_batches ,  # how much of the training data to train on
-        # limit_val_batches=config.limit_val_batches,  # how much of the validation data to train on
-        # limit_test_batches=config.limit_test_batches,  # how much of the validation data to train on
+        limit_train_batches=config.limit_train_batches ,  
         terminate_on_nan=True,
-
         resume_from_checkpoint=config.resume_from_checkpoint,
         replace_sampler_ddp=False,
         accumulate_grad_batches=config.accumulate_grad_batches,
@@ -90,15 +84,13 @@ def train_sts_dpc(config):
 def infer_sts_dpc(config, ckpts_path): 
     model_module = get_model_module(config)
     config.max_epochs = 1
+    config.output_inference_dir = os.path.join(config.log_to_dir, "inference" + time.strftime("_%Y%m%d_%H%M%S"))
     model = model_module.load_from_checkpoint(checkpoint_path=ckpts_path, hparams=config)
     trainer, checkpoint_callback = get_trainer(config)
     trainer.fit(model) ### pl "predict" and "test" of this pl version are buggy. I'm gonna use the fit and let it train on neutral for 1 epoch. instead of return, batch is stored in model as model.batch. ¯\_(ツ)_/¯
     pred = model.batch
-    inference_path = trainer.save_inference(pred)
-    return inference_path
+    model.save_inference(pred, ckpts_path)
+    return config.output_inference_dir
 
-
-
-    print(1)
 
 

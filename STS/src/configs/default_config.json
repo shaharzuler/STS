@@ -79,8 +79,6 @@
     "show_vis":true,
     "rotate_pc_for_vis":true,
     "rotate_pc_angles":[0, 0, 0],
-    "output_inference_dir":"/home/shahar/cardio_corr/my_packages/sts_project/STS/outputs/inference",
     "save_checkpoints_every_n_epochs": 50
-
 }
 
