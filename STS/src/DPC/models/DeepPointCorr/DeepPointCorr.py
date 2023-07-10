@@ -1,35 +1,24 @@
-from ...visualization.visualize_api import visualize_pair_corr, visualize_reconstructions
-# from data.point_cloud_db.point_cloud_dataset import PointCloudDataset
-
-
-from ..sub_models.dgcnn.dgcnn_modular import DGCNN_MODULAR
-from ..sub_models.dgcnn.dgcnn import get_graph_feature
-
-import numpy as np
-
+import torch
+import torch.nn.functional as F
 from torch.optim.lr_scheduler import MultiStepLR
 
-from ...utils.tensor_utils import knn
-# from torch_cluster import knn
 import pointnet2_ops._ext as _ext
+from ....ChamferDistancePytorch.chamfer3D import dist_chamfer_3D
+
+from ...visualization.visualize_api import visualize_pair_corr, visualize_reconstructions
+# from data.point_cloud_db.point_cloud_dataset import PointCloudDataset
+from ..sub_models.dgcnn.dgcnn_modular import DGCNN_MODULAR
+from ..sub_models.dgcnn.dgcnn import get_graph_feature
+# from torch_cluster import knn
 from ...models.correspondence_utils import get_s_t_neighbors
 from ...models.shape_corr_trainer import ShapeCorrTemplate
 from ...models.metrics.metrics import AccuracyAssumeEye, AccuracyAssumeEyeSoft, uniqueness
-
-from ...utils import switch_functions
-
-import torch
-import torch.nn.functional as F
-
 from ...models.sub_models.dgcnn.dgcnn import DGCNN as non_geo_DGCNN
-
+from ...utils import switch_functions
 from ...utils.argparse_init import str2bool
-
-from ....ChamferDistancePytorch.chamfer3D import dist_chamfer_3D
-
+from ...utils.tensor_utils import knn
 # STS 
 from ....Spectral_Teacher.FM_utils import fm_step
-
 from ....STS_utils.metrics import compute_geo_dist_batch
 
 class GroupingOperation(torch.autograd.Function):
@@ -80,9 +69,7 @@ class DeepPointCorr(ShapeCorrTemplate):
         return [self.optimizer], [self.scheduler]
 
     def compute_deep_features(self, shape):
-        shape["dense_output_features"] = self.encoder.forward_per_point(
-            shape["pos"], start_neighs=shape["neigh_idxs"]
-        )
+        shape["dense_output_features"] = self.encoder.forward_per_point(shape["pos"], start_neighs=shape["neigh_idxs"])
         return shape
 
     def forward_source_target(self, source, target):
@@ -175,11 +162,9 @@ class DeepPointCorr(ShapeCorrTemplate):
         return neighbor_loss
 
     def forward(self, data):
-
         for shape in ["source", "target"]:
             data[shape]["edge_index"] = [
-                knn(data[shape]["pos"][i], data[shape]["pos"][i], self.hparams.num_neighs,)
-                for i in range(data[shape]["pos"].shape[0])
+                knn(data[shape]["pos"][i], data[shape]["pos"][i], self.hparams.num_neighs,) for i in range(data[shape]["pos"].shape[0])
             ]
             data[shape]["neigh_idxs"] = torch.stack(
                 [data[shape]["edge_index"][i][1].reshape(data[shape]["pos"].shape[1], -1) for i in range(data[shape]["pos"].shape[0])]
@@ -189,163 +174,106 @@ class DeepPointCorr(ShapeCorrTemplate):
         data["source"], data["target"], data["P_normalized"], data["temperature"] = self.forward_source_target(data["source"], data["target"])
 
 
-        if self.hparams.mode != 'test':
-            # cross reconstruction losses
-            self.losses[f"source_cross_recon_loss"] = self.hparams.cross_recon_lambda * self.chamfer_loss(data["source"]["pos"], data["source"]["cross_recon"])
-            self.losses[f"target_cross_recon_loss"] =self.hparams.cross_recon_lambda * self.chamfer_loss(data["target"]["pos"], data["target"]["cross_recon"])
+        # cross reconstruction losses
+        self.losses[f"source_cross_recon_loss"] = self.hparams.cross_recon_lambda * self.chamfer_loss(data["source"]["pos"], data["source"]["cross_recon"])
+        self.losses[f"target_cross_recon_loss"] =self.hparams.cross_recon_lambda * self.chamfer_loss(data["target"]["pos"], data["target"]["cross_recon"])
 
-            # self reconstruction
-            if self.hparams.use_self_recon:
-                _, P_self_source = self.forward_shape(data["source"])
-                _, P_self_target = self.forward_shape(data["target"])
+        # self reconstruction
+        if self.hparams.use_self_recon:
+            _, P_self_source = self.forward_shape(data["source"])
+            _, P_self_target = self.forward_shape(data["target"])
 
-                # self reconstruction losses
-                data["source"]["self_recon_loss_unscaled"] = self.chamfer_loss(data["source"]["pos"], data["source"]["self_recon"])
-                data["target"]["self_recon_loss_unscaled"] = self.chamfer_loss(data["target"]["pos"], data["target"]["self_recon"])
+            # self reconstruction losses
+            data["source"]["self_recon_loss_unscaled"] = self.chamfer_loss(data["source"]["pos"], data["source"]["self_recon"])
+            data["target"]["self_recon_loss_unscaled"] = self.chamfer_loss(data["target"]["pos"], data["target"]["self_recon"])
 
-                self.losses[f"source_self_recon_loss"] = self.hparams.self_recon_lambda * data["source"]["self_recon_loss_unscaled"]
-                self.losses[f"target_self_recon_loss"] = self.hparams.self_recon_lambda * data["target"]["self_recon_loss_unscaled"]
+            self.losses[f"source_self_recon_loss"] = self.hparams.self_recon_lambda * data["source"]["self_recon_loss_unscaled"]
+            self.losses[f"target_self_recon_loss"] = self.hparams.self_recon_lambda * data["target"]["self_recon_loss_unscaled"]
 
-            if self.hparams.compute_perm_loss:
-                data[f"perm_loss_fwd_unscaled"] = self.get_perm_loss(data["P_normalized"])
-                data[f"perm_loss_bac_unscaled"] = self.get_perm_loss(data["P_normalized"].transpose(2, 1).contiguous())
+        if self.hparams.compute_perm_loss:
+            data[f"perm_loss_fwd_unscaled"] = self.get_perm_loss(data["P_normalized"])
+            data[f"perm_loss_bac_unscaled"] = self.get_perm_loss(data["P_normalized"].transpose(2, 1).contiguous())
 
-                if self.hparams.perm_loss_lambda > 0.0:
-                    self.losses[f"perm_loss_fwd"] = self.hparams.perm_loss_lambda * data[f"perm_loss_fwd_unscaled"]
-                    self.losses[f"perm_loss_bac"] = self.hparams.perm_loss_lambda * data[f"perm_loss_bac_unscaled"]
-
+            if self.hparams.perm_loss_lambda > 0.0:
+                self.losses[f"perm_loss_fwd"] = self.hparams.perm_loss_lambda * data[f"perm_loss_fwd_unscaled"]
+                self.losses[f"perm_loss_bac"] = self.hparams.perm_loss_lambda * data[f"perm_loss_bac_unscaled"]
 
 
-            if self.hparams.compute_neigh_loss and self.hparams.neigh_loss_lambda > 0.0:
-                data[f"neigh_loss_fwd_unscaled"] = \
-                    self.get_neighbor_loss(data["source"]["pos"], data["source"]["neigh_idxs"], data["target"]["cross_recon"], self.hparams.k_for_cross_recon)
-                data[f"neigh_loss_bac_unscaled"] = \
-                    self.get_neighbor_loss(data["target"]["pos"], data["target"]["neigh_idxs"], data["source"]["cross_recon"], self.hparams.k_for_cross_recon)
 
-                self.losses[f"neigh_loss_fwd"] = self.hparams.neigh_loss_lambda * data[f"neigh_loss_fwd_unscaled"]
-                self.losses[f"neigh_loss_bac"] = self.hparams.neigh_loss_lambda * data[f"neigh_loss_bac_unscaled"]
+        if self.hparams.compute_neigh_loss and self.hparams.neigh_loss_lambda > 0.0:
+            data[f"neigh_loss_fwd_unscaled"] = \
+                self.get_neighbor_loss(data["source"]["pos"], data["source"]["neigh_idxs"], data["target"]["cross_recon"], self.hparams.k_for_cross_recon)
+            data[f"neigh_loss_bac_unscaled"] = \
+                self.get_neighbor_loss(data["target"]["pos"], data["target"]["neigh_idxs"], data["source"]["cross_recon"], self.hparams.k_for_cross_recon)
 
-            #STS
-            if  self.hparams.compute_fm_loss and self.hparams.fm_loss_lambda > 0.0:
-                data['fm_loss_unscaled']= fm_step(data, data['source']["dense_output_features"], data['target']["dense_output_features"])
-                self.losses[f"fm_loss"] = self.hparams.fm_loss_lambda * data[f"fm_loss_unscaled"]
+            self.losses[f"neigh_loss_fwd"] = self.hparams.neigh_loss_lambda * data[f"neigh_loss_fwd_unscaled"]
+            self.losses[f"neigh_loss_bac"] = self.hparams.neigh_loss_lambda * data[f"neigh_loss_bac_unscaled"]
+
+        #STS
+        if  self.hparams.compute_fm_loss and self.hparams.fm_loss_lambda > 0.0:
+            data['fm_loss_unscaled']= fm_step(data, data['source']["dense_output_features"], data['target']["dense_output_features"])
+            self.losses[f"fm_loss"] = self.hparams.fm_loss_lambda * data[f"fm_loss_unscaled"]
         self.track_metrics(data)
 
         return data
 
-    def test_step(self, test_batch, batch_idx): # STS - different rom original
-        self.hparams.mode = 'test'
-        test_batch = self.covnert_batch_from_spectral_to_DPC(test_batch)
-        self.training_step(test_batch, batch_idx, mode='test')
+    # def test_step(self, test_batch, batch_idx): # STS - different rom original
+    #     self.hparams.mode = 'test'
+    #     test_batch = self.covnert_batch_from_spectral_to_DPC(test_batch)
+    #     self.training_step(test_batch, batch_idx, mode='test')
 
 
-        return True
+    #     return True
 
 
-    def visualize(self, batch, mode="train"):
-        visualize_pair_corr(self,batch, mode=mode)
-        visualize_reconstructions(self,batch, mode=mode)
+    def visualize(self, batch, mode="train"): 
+        visualize_pair_corr(self, batch, pic_folder=self.config.visualization_save_dir, mode=mode)
+        # visualize_reconstructions(self, batch, mode=mode)
         
-    # @staticmethod
-    # def add_model_specific_args(parent_parser, task_name, dataset_name, is_lowest_leaf=False):
-    #     parser = ShapeCorrTemplate.add_model_specific_args(parent_parser, task_name, dataset_name, is_lowest_leaf=False)
-    #     parser = non_geo_DGCNN.add_model_specific_args(parser, task_name, dataset_name, is_lowest_leaf=True)
-    #     parser = PointCloudDataset.add_dataset_specific_args(parser, task_name, dataset_name, is_lowest_leaf=False)
-    #     parser.add_argument("--k_for_cross_recon", default=10, type=int, help="number of neighbors for cross reconstruction")
 
-    #     parser.add_argument("--use_self_recon", nargs="?", default=True, type=str2bool, const=True, help="whether to use self reconstruction")
-    #     parser.add_argument("--k_for_self_recon", default=10, type=int, help="number of neighbors for self reconstruction")
-    #     parser.add_argument("--self_recon_lambda", type=float, default=10.0, help="weight for self reconstruction loss")
-    #     parser.add_argument("--cross_recon_lambda", type=float, default=1.0, help="weight for cross reconstruction loss")
+    def track_metrics(self, data):        
+        self.tracks[f"source_cross_recon_error"] = self.chamfer_loss(data["source"]["pos"], data["source"]["cross_recon_hard"])
+        self.tracks[f"target_cross_recon_error"] = self.chamfer_loss(data["target"]["pos"], data["target"]["cross_recon_hard"])
 
-    #     parser.add_argument("--compute_perm_loss", nargs="?", default=False, type=str2bool, const=True, help="whether to compute permutation loss")
-    #     parser.add_argument("--perm_loss_lambda", type=float, default=1.0, help="weight for permutation loss")
+        if self.hparams.use_self_recon:
+            self.tracks[f"source_self_recon_loss_unscaled"] = data["source"]["self_recon_loss_unscaled"]
+            self.tracks[f"target_self_recon_loss_unscaled"] = data["target"]["self_recon_loss_unscaled"]
 
-    #     parser.add_argument("--optimize_pos", nargs="?", default=False, type=str2bool, const=True, help="whether to compute neighbor smoothness loss")
-    #     parser.add_argument("--compute_neigh_loss", nargs="?", default=True, type=str2bool, const=True, help="whether to compute neighbor smoothness loss")
-    #     parser.add_argument("--neigh_loss_lambda", type=float, default=1.0, help="weight for neighbor smoothness loss")
-    #     parser.add_argument("--num_angles", type=int, default=100,)
+        if self.hparams.compute_neigh_loss and self.hparams.neigh_loss_lambda > 0.0:
+            self.tracks[f"neigh_loss_fwd_unscaled"] = data[f"neigh_loss_fwd_unscaled"]
+            self.tracks[f"neigh_loss_bac_unscaled"] = data[f"neigh_loss_bac_unscaled"]
 
-    #     parser.add_argument("--use_euclidiean_in_self_recon", nargs="?", default=False, type=str2bool, const=True, help="whether to use self reconstruction")
-    #     parser.add_argument("--use_all_neighs_for_cross_reco", nargs="?", default=False, type=str2bool, const=True, help="whether to use self reconstruction")
-    #     parser.add_argument("--use_all_neighs_for_self_reco", nargs="?", default=False, type=str2bool, const=True, help="whether to use self reconstruction")
+        # nearest neighbors hit accuracy
+        source_pred = data["P_normalized"].argmax(dim=2)
+        target_neigh_idxs = data["target"]["neigh_idxs"]
 
-    #     parser.add_argument("--compute_fm_loss", nargs="?", default=True, type=str2bool, help="whether to compute neighbor smoothness loss")
-    #     parser.add_argument("--fm_loss_lambda", type=float, default=1, help="weight for neighbor smoothness loss")
-    #     parser.add_argument("--n_points", type=int, default=1024, help="number of data points")
-    #     parser.add_argument("--k_lbo", type=int, default=40, help="How many LBO vectors to create")
+        target_pred = data["P_normalized"].argmax(dim=1)
+        source_neigh_idxs = data["source"]["neigh_idxs"]
 
-    #     parser.set_defaults(
-    #         optimizer="adam",
-    #         lr=0.0003,  # lr = 0.001 (beter in some cases)
-    #         weight_decay=5e-4,
-    #         max_epochs=300,
-    #         accumulate_grad_batches=2,
-    #         latent_dim=768,
-    #         DGCNN_latent_dim=512,
-    #         bb_size=24,
-    #         num_neighs=27,
+        # uniqueness (number of unique predictions)
+        self.tracks[f"uniqueness_fwd"] = uniqueness(source_pred)
+        self.tracks[f"uniqueness_bac"] = uniqueness(target_pred)
 
-    #         val_vis_interval=20,
-    #         test_vis_interval=20,
-    #     )
+        # if self.hparams.mode !='train': # TODO consider adding
+        #     geo_mean_fm , geo_array_fm, geo_90_fm = compute_geo_dist_batch(data["P_normalized"].clone(), data['geo_dist'][:,:,:,1], is_P_mapping=False, dont_mean=False, gt=None)
+            
+        #     self.tracks[f"geo_mean"] = geo_mean_fm
+        #     self.tracks[f"acc"]  = geo_array_fm[0][0]
+        #     self.tracks[f"acc1%"] = geo_array_fm[0][5]
 
-    #     return parser
-
-
-
-    def track_metrics(self, data):
-        if self.hparams.mode !='test':
-            self.tracks[f"source_cross_recon_error"] = self.chamfer_loss(data["source"]["pos"], data["source"]["cross_recon_hard"])
-            self.tracks[f"target_cross_recon_error"] = self.chamfer_loss(data["target"]["pos"], data["target"]["cross_recon_hard"])
-
-
-            if self.hparams.use_self_recon:
-                self.tracks[f"source_self_recon_loss_unscaled"] = data["source"]["self_recon_loss_unscaled"]
-                self.tracks[f"target_self_recon_loss_unscaled"] = data["target"]["self_recon_loss_unscaled"]
-
-
-            if self.hparams.compute_neigh_loss and self.hparams.neigh_loss_lambda > 0.0:
-                self.tracks[f"neigh_loss_fwd_unscaled"] = data[f"neigh_loss_fwd_unscaled"]
-                self.tracks[f"neigh_loss_bac_unscaled"] = data[f"neigh_loss_bac_unscaled"]
-
-            # nearest neighbors hit accuracy
-            source_pred = data["P_normalized"].argmax(dim=2)
-            target_neigh_idxs = data["target"]["neigh_idxs"]
-
-            target_pred = data["P_normalized"].argmax(dim=1)
-            source_neigh_idxs = data["source"]["neigh_idxs"]
-
-            # uniqueness (number of unique predictions)
-            self.tracks[f"uniqueness_fwd"] = uniqueness(source_pred)
-            self.tracks[f"uniqueness_bac"] = uniqueness(target_pred)
-
-            # added by Omri:
-        if self.hparams.mode !='train':
-            # original
-            geo_mean_fm , geo_array_fm, geo_90_fm = compute_geo_dist_batch(data["P_normalized"].clone(), data['geo_dist'][:,:,:,1], is_P_mapping=False, dont_mean=False, gt=None)
-            # FM             
-            # p_fm = FM_to_p2p(c_mat, evects1[i], evects2[i])
-            geo_mean_fm , geo_array_fm, geo_90_fm = compute_geo_dist_batch(data["P_normalized"].clone(), data['geo_dist'][:,:,:,1], is_P_mapping=False, dont_mean=False, gt=None)
-
-
-            self.tracks[f"geo_mean"] = geo_mean_fm
-            self.tracks[f"acc"]  = geo_array_fm[0][0]
-            self.tracks[f"acc1%"] = geo_array_fm[0][5]
-            if self.hparams.mode =='test':
-                pair = data['key'][0]
-                self.mean_err_list.append(geo_mean_fm.cpu().item())
-                self.pairs_name.append(pair)
-                self.acc_list.append(geo_array_fm[0][5].cpu().item())
-                mapping = data["P_normalized"].argmax(-1)[0].cpu()
-                self.mapping_list.append(mapping[None,:])
-                if self.geo_dist.device != geo_array_fm.device:
-                    self.geo_dist= self.geo_dist.to(geo_array_fm.device)
-                self.geo_dist += geo_array_fm[0]
+        #     if False: 
+        #         pair = data['key'][0]
+        #         self.mean_err_list.append(geo_mean_fm.cpu().item())
+        #         self.pairs_name.append(pair)
+        #         self.acc_list.append(geo_array_fm[0][5].cpu().item())
+        #         mapping = data["P_normalized"].argmax(-1)[0].cpu()
+        #         self.mapping_list.append(mapping[None,:])
+        #         if self.geo_dist.device != geo_array_fm.device:
+        #             self.geo_dist= self.geo_dist.to(geo_array_fm.device)
+        #         self.geo_dist += geo_array_fm[0]
                 
-                if True:
-                    self.P_crop.append(data["P_normalized"][0].cpu())
-                    P_target= switch_functions.measure_similarity(self.hparams.similarity_init, data['source']["dense_output_features"], data['source']["dense_output_features"])
-                    P_source = switch_functions.measure_similarity(self.hparams.similarity_init, data['target']["dense_output_features"], data['target']["dense_output_features"])
-                    self.P_target.append(P_target[0].cpu())
-                    self.P_source.append(P_source[0].cpu())
+        #         self.P_crop.append(data["P_normalized"][0].cpu())
+        #         P_target= switch_functions.measure_similarity(self.hparams.similarity_init, data['source']["dense_output_features"], data['source']["dense_output_features"])
+        #         P_source = switch_functions.measure_similarity(self.hparams.similarity_init, data['target']["dense_output_features"], data['target']["dense_output_features"])
+        #         self.P_target.append(P_target[0].cpu())
+        #         self.P_source.append(P_source[0].cpu())

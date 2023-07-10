@@ -28,12 +28,12 @@ def fm_step(batch, feat1, feat2):
 
 
     # extract variables from batch
-    evects1 = batch['evects'][:, :, :, 0]
-    evects2 = batch['evects'][:, :, :, 1]
-    A1 = batch['a'][:, :, 0]
-    A2 = batch['a'][:, :, 1]
-    evals_1 = batch['evals'][:,:,0]
-    evals_2 = batch['evals'][:,:,1]
+    evects1 = batch['eigenvectors'][:, :, :, 0]
+    evects2 = batch['eigenvectors'][:, :, :, 1]
+    A1 = batch['area_weights'][:, :, 0]
+    A2 = batch['area_weights'][:, :, 1]
+    evals_1 = batch['eigenvalues'][:,:,0]
+    evals_2 = batch['eigenvalues'][:,:,1]
     if hasattr(batch, 'evects_trans'):
         evects1_trans = batch['evects_trans'][:, :, :, 0]
         evects2_trans = batch['evects_trans'][:, :, :, 0]
@@ -55,7 +55,7 @@ def fm_step(batch, feat1, feat2):
         fm2 = torch.matmul(feat2.transpose(2, 1)[i], evects2_trans.transpose(2, 1)[i])
 
 
-        fm1_inv = fm1.transpose(1,0).pinverse()
+        fm1_inv = fm1.float().transpose(1,0).pinverse().to(torch.float16)
 
         c_mat = torch.matmul(fm2.transpose(1,0), fm1_inv)
         C1.append(c_mat.unsqueeze(0))
@@ -64,7 +64,7 @@ def fm_step(batch, feat1, feat2):
         #     p1 = FM_to_p2p(c_mat, evects1[i], evects2[i])
         #     P1.append(p1)
 
-        fm2_inv = fm2.transpose(1,0).pinverse()
+        fm2_inv = fm2.float().transpose(1,0).pinverse().to(torch.float16)
         c_mat = torch.matmul(fm1.transpose(1,0), fm2_inv)
         C2.append(c_mat.unsqueeze(0))
 

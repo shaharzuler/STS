@@ -1,82 +1,64 @@
 """Shape correspondence template."""
 from argparse import Namespace
 import collections
-# STS imports
-# import os, sys
-# print(os.path.abspath('./'))
-# sys.path.append(os.path.abspath('./'))
-# sys.path.append(os.path.abspath('./DPC/'))
+import os
 
-
-
-from .correspondence_utils import square_distance
-from ..utils.tensor_utils import to_numpy
-
-
-# from data.point_cloud_db.point_cloud_dataset import PointCloudDataset, matrix_map_from_corr_map
-from .metrics.metrics import AccuracyAssumeEye
-
+from torch.utils.data import DataLoader
 import torch
 from pytorch_lightning import _logger as log
 from pytorch_lightning.core import LightningModule
-from torch import Tensor
+import numpy as np
+import h5py
 
-from ..utils import argparse_init, switch_functions
+from ..utils import switch_functions
+from .correspondence_utils import square_distance
+from ..utils.tensor_utils import to_numpy
+from .metrics.metrics import AccuracyAssumeEye
 
-#STS
-import plotly.express as px
-import pandas as pd
-import wandb, pickle
 
 class ShapeCorrTemplate(LightningModule):
-    """
-    This is a template for future shape correspondence templates using pytorch lightning.
-
-    """
 
     def __init__(self, hparams, **kwargs):
-        """Stub."""
         super(ShapeCorrTemplate, self).__init__()
-        load_hparams = vars(hparams) if isinstance(hparams,Namespace) else hparams
+        load_hparams = vars(hparams) if isinstance(hparams, Namespace) else hparams
         for k,v in load_hparams.items():
             setattr(self.hparams,k,v)
-
+        self.save_hyperparameters()
+        self.config = hparams
         self.train_accuracy = AccuracyAssumeEye()
         self.val_accuracy = AccuracyAssumeEye()
         self.test_accuracy = AccuracyAssumeEye()
         self.losses = {}
         self.tracks = {}
-
-        
+ 
     def setup(self, stage):
-        # (self.train_dataset, self.val_dataset, self.test_dataset,) = switch_functions.load_dataset(self.hparams) # Original code
-        (self.train_dataset, self.val_dataset, self.test_dataset,) = switch_functions.load_dataset_spectral(self.hparams)
-
-
-    def forward(self, data) -> Tensor:
-        """Stub."""
-        raise NotImplementedError()
-
+        self.hparams.consistant_shape_indices_filename = os.path.join(self.config.log_to_dir, "consistant_shape_indices.npz")
+        self.train_dataset = switch_functions.load_dataset_spectral(self.hparams) 
+        self.test_dataset = self.train_dataset#switch_functions.load_dataset_spectral(self.hparams) 
+        self.store_data_indices()
+    
+    def store_data_indices(self):  
+        if not os.path.isfile(self.hparams.consistant_shape_indices_filename):
+            np.savez(
+                self.hparams.consistant_shape_indices_filename,
+                template_indices=self.train_dataset.template_indices,
+                unlabeled_indices=self.train_dataset.unlabeled_indices
+                )
 
     def training_step(self, batch, batch_idx, mode="train"):
-        """
-        Lightning calls this inside the training loop with the 
-        data from the training dataloader passed in as `batch`.
-        """
+        self.batch = self.covnert_batch_from_spectral_to_DPC(batch) # STS
+        
         self.losses = {}
         self.tracks = {}
         self.hparams.batch_idx = batch_idx
         self.hparams.mode = mode
-        batch = self.covnert_batch_from_spectral_to_DPC(batch) # STS
-        self.batch = batch
-
-        # forward pass
-        # self.log_weights_norm()
+            
         batch = self(batch)
-
-
+        
+        # self.log_weights_norm()
+        
         if len(self.losses) > 0:
-            loss = sum(self.losses.values()).mean()
+            loss = sum(self.losses.values()).mean() #TODO scale lambdas
             self.tracks[f"{mode}_tot_loss"] = loss
         else:
             loss = None
@@ -84,143 +66,51 @@ class ShapeCorrTemplate(LightningModule):
         all = {k: to_numpy(v) for k, v in {**self.tracks, **self.losses}.items()}
         getattr(self, f"{mode}_logs", None).append(all)
 
-        if (batch_idx % (self.hparams.log_every_n_steps if self.hparams.mode != 'test' else 1) == 0):
-            for k, v in all.items():
-                self.logger.experiment.add_scalar(f"{k}/step", v,self.global_step)
+        # TODO:
+        # if (batch_idx % (self.hparams.log_every_n_steps if self.hparams.mode != 'test' else 1) == 0):
+        #     for k, v in all.items():
+        #         self.logger.experiment.add_scalar(f"{k}/step", v,self.global_step)
 
-        # STS - disablr original vis ()
-        # if self.vis_iter():
-        #     self.visualize(batch, mode=mode)
+        if self.vis_iter():
+            self.visualize(batch, mode=mode) #TODO go over it and compare to old code. remove p matrices!
 
         output = collections.OrderedDict({"loss": loss})
         return output
 
-    def vis_iter(self,):
-        return (self.hparams.batch_idx % eval(f"self.hparams.{self.hparams.mode}_vis_interval") == 0) and self.hparams.show_vis
+        
 
-    def visualize(self, batch, mode="train"):
-        """
-        Here we perform visualizations.
-        """
+    def vis_iter(self):
+        return ((self.current_epoch % self.hparams.train_vis_interval) == 0) and self.hparams.show_vis
 
-    def validation_step(self, batch, batch_idx, mode="val"):
-        """Lightning calls this inside the validation loop with the data from the validation dataloader passed in as `batch`."""
-        return self.training_step(batch, batch_idx, mode=mode)
-
-    def log_test_step(self):
-        logs_step = {k: to_numpy(v) for k, v in {**self.tracks}.items()}
-        getattr(self, f"test_logs", None).append(logs_step)
-
-        self.log_dict({f"test/{k}": v for k, v in self.tracks.items()}, on_step=False, on_epoch=True)
-
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
     def configure_optimizers(self):
-        """
-        Return whatever optimizers and learning rate schedulers you want here.
-        """
         self.optimizer = switch_functions.choose_optimizer(self.hparams, self.parameters())
         # self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda epoch: (1 - epoch / self.hparams.max_epochs))
         return self.optimizer  # , [self.optimizer],[self.scheduler]
 
-    def dataloader(self, dataset, mode):
-        """
-        Returns the relevant dataloader (called once per training).
-        
-        Args:
-            train_val_test (str, optional): Define which dataset to choose from. Defaults to 'train'.
-        
-        Returns:
-            Dataset
-        """
-        # init data generators
-        if self.hparams.task_name == "shape_corr":
-            # sampler = RandomSampler(dataset, replacement=False) if mode == 'train' else None # shape corr means dataset = N**2, replacment=False is too slow (but for a small dataset it is ok)
-            sampler = None 
-            loader = switch_functions.get_dataloader(self.hparams.task_name, self.hparams)(
-                dataset=dataset,
-                batch_size=getattr(self.hparams, f"{mode}_batch_size", 1),
-                num_workers=self.hparams.num_data_workers,
-                shuffle=True if mode == 'train' and sampler is None else False,
-                drop_last=True if mode == 'train' else False,
-                sampler=sampler,
-            )
-        else:
-            raise Exception("No match for task_name in load_dataset")
-
+    def dataloader(self, dataset):
+        loader = DataLoader(
+            dataset=dataset,
+            batch_size=getattr(self.hparams, "train_batch_size", 1),
+            num_workers=self.hparams.num_data_workers,
+            shuffle=False,
+            drop_last=True,
+            sampler=None,
+        )
         return loader
 
-    def prepare_data(self):
-        """
-        Here we download the data, called once(for all gpus).
-        The definition of the datasets happens in the setup()
-
-        prepare_data is called from a single GPU. Do not use it to assign state (self.x = y).
-        """
     def covnert_batch_from_spectral_to_DPC(self, batch):
-        batch['source'] = {'pos':batch['verts'][:, :, :, 0].float()}
-        batch['target'] = {'pos':batch['verts'][:, :, :, 1].float()}
+        batch['source'] = {'pos':batch['vertices'][:, :, :, 0].float()}
+        batch['target'] = {'pos':batch['vertices'][:, :, :, 1].float()}
         return batch
 
-
     def train_dataloader(self):
-        """Stub."""
-        log.info("Training data loader called.")
-        return self.dataloader(self.train_dataset,mode='train')
-
-    def val_dataloader(self):
-        """Stub."""
-        log.info("Validation data loader called.")
-        return self.dataloader(self.val_dataset,mode='val')
-
-    def test_dataloader(self):
-        """Stub."""
-        log.info("Test data loader called.")
-        return self.dataloader(self.test_dataset,mode='test')
-    
-    def predict_dataloader(self):
-        """Stub."""
-        log.info("Test data loader called.")
-        return self.dataloader(self.test_dataset,mode='test')
-
-    def test_step(self, batch, batch_idx):
-        """
-        Lightning calls this during testing, similar to `validation_step`,
-        with the data from the test dataloader passed in as `batch`.
-        """
-        output = self.validation_step(batch, batch_idx, mode="test")
-
-        return output
-
-    def on_validation_epoch_start(self):
-        self.val_logs = []
-        self.hparams.mode = 'val'
+        return self.dataloader(self.train_dataset)
 
     def on_train_epoch_start(self):
         self.train_logs = []
-        self.hparams.mode = 'train' 
         self.hparams.current_epoch = self.current_epoch
 
-    def on_test_epoch_start(self):
-        self.test_logs = []
-        self.hparams.mode = 'test'
-
-        # STS (for manual logging)
-        self.mean_err_list = []
-        self.pairs_name = []
-        self.acc_list = []
-        self.mapping_list = []
-        self.P_crop = []
-        self.P_target = []
-        self.P_source = []
-        self.time_list = []
-        self.geo_range = torch.arange(0, 1, step=0.002)
-        self.geo_dist = torch.zeros(len(self.geo_range))
-        
-    
-    def on_epoch_end_generic(self):
+    def on_train_epoch_end(self):
         logs = getattr(self, f"{self.hparams.mode}_logs", None)
         dict_of_lists = {k: [dic[k] for dic in logs] for k in logs[0]}
         for key, lst in dict_of_lists.items():
@@ -236,64 +126,8 @@ class ShapeCorrTemplate(LightningModule):
 
         return dict_of_lists
 
-    def on_train_epoch_end(self, outputs) -> None:
-        self.on_epoch_end_generic()
-
-    def on_validation_epoch_end(self) -> None:
-        self.on_epoch_end_generic()
-
-    def on_test_epoch_end(self):
-        self.on_epoch_end_generic()
-
-        # manual logging
-        count = len(self.mean_err_list)
-        self.geo_dist = self.geo_dist / count
-        self.geo_mean = sum(self.mean_err_list) / count
-        self.acc_mean = sum(self.acc_list) / count
-        if len(self.time_list) > 0:
-            self.run_time = sum(self.time_list) / len(self.time_list)
-        else:
-            self.run_time = 0
-
-        df = pd.DataFrame({'acc':self.geo_dist.cpu(),'range':self.geo_range})
-        fig = px.line(df, x="range", y="acc")
-
-        dict_to_log = {#'geo_array': wandb.Plotly(fig),
-                        # 'test/geo_dist/Test_mean': self.geo_mean.cpu(),
-                        'geo_mean': self.geo_mean,
-                        'acc': self.acc_mean,
-                        'time': self.run_time
-                      }
-        self.log_dict(dict_to_log)
-        print(dict_to_log)
-        dict_to_log['geo_array'] =self.geo_dist.cpu()
-
-        return 
-
-    
-
-    # @staticmethod
-    # def extract_labels_for_test(test_batch):
-    #     data_dict = test_batch
-    #     if('label_flat' in test_batch):
-    #         label = data_dict['label_flat'].squeeze(0)
-    #         pinput1 = data_dict['src_flat']
-    #         input2 = data_dict['tgt_flat']
-    #     else:
-    #         pinput1 = data_dict['source']['pos']
-    #         input2 = data_dict['target']['pos']
-    #         label = matrix_map_from_corr_map(data_dict['gt_map'].squeeze(0),pinput1.squeeze(0),input2.squeeze(0))
-
-
-    #     ratio_list, soft_labels = PointCloudDataset.extract_soft_labels_per_pair(
-    #         label,
-    #         input2.squeeze(0)
-    #     )
-        
-    #     return label,pinput1,input2,ratio_list,soft_labels
-
     @staticmethod
-    def compute_acc(label, ratio_list, soft_labels, p,input2,track_dict={},hparams=Namespace()):
+    def compute_acc(label, ratio_list, soft_labels, p, input2, track_dict={}, hparams=Namespace()):
         corr_tensor = ShapeCorrTemplate._prob_to_corr_test(p)
 
         hit = label.argmax(-1).squeeze(0)
@@ -336,3 +170,44 @@ class ShapeCorrTemplate(LightningModule):
 
         return c
 
+    def save_inference(self, pred): #TODO add saving of downsampling indices
+        self.hparams.output_inference_dir = self.hparams.output_inference_dir
+        os.makedirs(self.hparams.output_inference_dir, exist_ok=True)
+
+        with open(os.path.join(self.hparams.output_inference_dir, "orig_model_info.txt"), "w") as f:
+            f.write(f"orig checkpoints: \n{self.hparams.resume_from_checkpoint}")
+        p = pred["P_normalized"].clone()
+        f =  h5py.File(os.path.join(self.hparams.output_inference_dir, "model_inference.hdf5"), 'a')
+
+        p_file_name = f"p_{pred['id'][0]}"
+        f.create_dataset(
+                    name=p_file_name, 
+                    data=p[0].cpu().numpy(), 
+                    compression="gzip")
+        
+        source_neigh_idxs_file_name = f"source_neigh_idxs_{pred['id'][0]}"
+        f.create_dataset(
+                    name=source_neigh_idxs_file_name, 
+                    data=pred["source"]["neigh_idxs"][0].cpu().numpy(), 
+                    compression="gzip")
+
+        target_neigh_idxs_file_name = f"target_neigh_idxs_{pred['id'][0]}"
+        f.create_dataset(
+                    name=target_neigh_idxs_file_name, 
+                    data=pred["target"]["neigh_idxs"][0].cpu().numpy(), 
+                    compression="gzip")
+
+        source_file_name = f"source_{pred['id'][0]}"
+        f.create_dataset(
+                    name=source_file_name, 
+                    data=pred["source"]["pos"][0].cpu().numpy(), 
+                    compression="gzip")
+
+        target_file_name = f"target_{pred['id'][0]}"
+        f.create_dataset(
+                    name=target_file_name, 
+                    data=pred["target"]["pos"][0].cpu().numpy(), 
+                    compression="gzip")
+
+        # print(f"Saved inference to {os.path.join(self.output_inference_dir, batch['id'][0])}...")
+        f.close()

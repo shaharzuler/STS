@@ -1,5 +1,7 @@
 import torch
 
+from ..utils import switch_functions
+
 
 def get_s_t_topk(P, k, s_only=False,nn_idx=None):
     """
@@ -30,7 +32,6 @@ def get_s_t_topk(P, k, s_only=False,nn_idx=None):
 
 
 def get_s_t_neighbors(k, P, sim_normalization, s_only=False, ignore_first=False,nn_idx=None):
-    from utils import switch_functions
     s_nn_sim, s_nn_idx, t_nn_sim, t_nn_idx = get_s_t_topk(P, k, s_only=s_only,nn_idx=nn_idx)
     if ignore_first:
         s_nn_sim, s_nn_idx = s_nn_sim[:, :, 1:], s_nn_idx[:, :, 1:]

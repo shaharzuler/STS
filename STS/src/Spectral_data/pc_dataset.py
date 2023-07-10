@@ -1,106 +1,73 @@
 
-import sys, torch, pickle
+import os
+
 import numpy as np 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import h5py
-from itertools import combinations, product
-from torch.utils.data import Subset
-import random
-
-# from torchaudio import datasets
 
 
 
-# # STS static variable
-# SHREC_DATA_PATH = 'Spectral_data/datasets/shrec/shrec_all_120_lbo.hdf5'
-# SHREC_GT_PATH = 'Spectral_data/datasets/shrec/shrec_gt.hdf5'
-# SHREC_GEO = 'Spectral_data/datasets/shrec/shrec_geo_dist.hdf5'
-
-
-# SURREAL_TRAIN = 'Spectral_data/datasets//surreal/surreal_new_full_230k.hdf5'
-# SURREAL_TEST = 'Spectral_data/datasets/surreal/surreal_test.hdf5'
-
-
-# FAUST_TRAIN = 'Spectral_data/datasets//Faust_original/faust_train.hdf5' 
-# FAUST_TEST = 'Spectral_data/datasets/Faust_original/faust_test.hdf5'
-# FAUST_GEO = 'Spectral_data/datasets/Faust_original/faust_geo.hdf5' 
 
 
 def create_sts_dataset(args):
-    name =  args.STS_test_dataset
+    name =  args.dataset_name
     print(name)
     if name == 'cardio':
         dataset = CardioDataset(args)
     return dataset
 
-# def create_sts_dataset(hparams, return_dataset=False):
-#     val_dataloader = None
-#     if hparams.STS_dataset=='SHREC':
-#         val_dataset = SHREC(hparams,'test') 
-#         train_dataset = SHREC(hparams,'train')
-#     elif hparams.STS_dataset=='SURREAL':
-#         val_dataset= SURREAL(hparams,'test')
-#         train_dataset = SURREAL(hparams,'train')
 
-#     elif hparams.STS_dataset=='FAUST':
-#         train_dataset = FAUST(hparams,'train')
-#         #TODO - add param for split
-#         train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [int(len(train_dataset)*0.9), len(train_dataset) - int(len(train_dataset)*0.9)])
-
-
-#         # another opption:
-#         # val_dataset = FAUST(hparams,'train')
-
-#     if return_dataset:
-#         return train_dataset, val_dataset
-#     else:
-#         train_dataloader = DataLoader(train_dataset, batch_size=hparams.batch_size, shuffle=True, num_workers=hparams.num_workers)
-#         val_dataloader = DataLoader(val_dataset, batch_size=hparams.batch_size, shuffle=False, num_workers=hparams.num_workers, drop_last=True)
-#     return train_dataloader, val_dataloader
-
-class CardioDataset(Dataset):#(BasicPCDataset):
+class CardioDataset(Dataset):
     def __init__(self, config):
         super().__init__()
         self.config=config
-        self.persistant_indices_template = np.random.choice(config.max_point_cloud_points, config.max_point_cloud_points, replace=False)
-        self.persistant_indices_unlabeled = np.random.choice(config.max_point_cloud_points, config.max_point_cloud_points, replace=False)
-        template_h5 = h5py.File(config.template_h5_path, 'r')
-        unlabeled_h5 = h5py.File(config.unlabeled_h5_path, 'r')
-        template_timestep = config.template_timestep
-        unlabeled_timestep = config.unlabeled_timestep
-        keys_for_out_dict = [
-            "points", 
-            "eigenvectors", 
-            "area_weights", 
-            "eigenvalues",  
-            ]
-        keys_from_template = [
-            f"{template_timestep}_points", 
-            f"{template_timestep}_eigenvectors", 
-            f"{template_timestep}_area_weights", 
-            f"{template_timestep}_eigenvalues", 
-            ]
-        keys_from_unlabeled = [
-            f"{unlabeled_timestep}_points", 
-            f"{unlabeled_timestep}_eigenvectors", 
-            f"{unlabeled_timestep}_area_weights", 
-            f"{unlabeled_timestep}_eigenvalues", 
-            ]
-        out_dict = {}
-        for key_for_outdict, key_from_template, key_from_unlabeled in zip (keys_for_out_dict, keys_from_template, keys_from_unlabeled):
-            out_dict[key_for_outdict] = (template_h5[key_from_template][:], unlabeled_h5[key_from_unlabeled][:])
-        out_dict["indices"] = self.persistant_indices_template, self.persistant_indices_unlabeled #TODOSCALEDOWN
-
-
-        # self.dataset_type= dataset_type
-        # self.hparams = hparams
-        # self.data_h5 = h5py.File(data_h5_path, 'r') #data_h5 #
-        # self.geo = h5py.File(data_h5_path, 'r') #data_h5 #
         
+        self.get_pair(config)
 
+    def get_pair(self, config):
+        template_h5 = h5py.File(config.template_h5_path, 'r')
+        template_timestep = config.template_timestep
+        template_vertices = template_h5[f"{template_timestep}_vertices"][:]
 
-        # self.pair = foo()
-        # self.get_pair()
+        unlabeled_h5 = h5py.File(config.unlabeled_h5_path, 'r')
+        unlabeled_timestep = config.unlabeled_timestep
+        unlabeled_vertices = unlabeled_h5[f"{unlabeled_timestep}_vertices"][:]
+
+        self.num_points = min(template_vertices.shape[0], unlabeled_vertices.shape[0], self.config.n_points)
+
+        if os.path.isfile(self.config.consistant_shape_indices_filename):
+            indices_npz_file = np.load(self.config.consistant_shape_indices_filename)
+            self.template_indices = indices_npz_file["template_indices"]
+            self.unlabeled_indices = indices_npz_file["unlabeled_indices"]
+        else:
+            self.template_indices = np.random.choice(template_vertices.shape[0], self.num_points, replace=False)
+            self.unlabeled_indices = np.random.choice(unlabeled_vertices.shape[0], self.num_points, replace=False)   
+
+        template_vertices_sampeled = template_vertices[self.template_indices]
+        template_eigenvectors = template_h5[f"{template_timestep}_eigenvectors"][:]           
+        unlabeled_vertices_sampeled = unlabeled_vertices[self.unlabeled_indices]
+        unlabeled_eigenvectors = unlabeled_h5[f"{unlabeled_timestep}_eigenvectors"][:]
+        
+        self.k_lbo = min(template_eigenvectors.shape[1], unlabeled_eigenvectors.shape[1], self.config.k_lbo)
+
+        template_eigenvectors_sampeled = template_eigenvectors[self.template_indices, :self.k_lbo]
+        template_area_weights = template_h5[f"{template_timestep}_area_weights"][:]
+        template_area_weights_sampeled = template_area_weights[self.template_indices]
+        template_eigenvalues = template_h5[f"{template_timestep}_eigenvalues"][:][:self.k_lbo]
+
+        unlabeled_eigenvectors_sampeled = unlabeled_eigenvectors[self.unlabeled_indices, :self.k_lbo]
+        unlabeled_area_weights = unlabeled_h5[f"{unlabeled_timestep}_area_weights"][:]
+        unlabeled_area_weights_sampeled = unlabeled_area_weights[self.unlabeled_indices]
+        unlabeled_eigenvalues = unlabeled_h5[f"{unlabeled_timestep}_eigenvalues"][:][:self.k_lbo]
+
+        self.pair = {}
+        self.pair['key'] = f"{template_timestep}_{unlabeled_timestep}"
+        self.pair["vertices"] = np.concatenate([template_vertices_sampeled[...,None], unlabeled_vertices_sampeled[...,None]], axis=-1).astype(np.float16)
+        self.pair["eigenvectors"] = np.concatenate([template_eigenvectors_sampeled[...,None], unlabeled_eigenvectors_sampeled[...,None]], axis=-1).astype(np.float16)
+        self.pair["area_weights"] = np.concatenate([template_area_weights_sampeled[...,None], unlabeled_area_weights_sampeled[...,None]], axis=-1).astype(np.float16)
+        self.pair["eigenvalues"] = np.concatenate([template_eigenvalues[...,None], unlabeled_eigenvalues[...,None]], axis=-1).astype(np.float16)
+        self.pair["indices"] = np.concatenate([self.template_indices[...,None], self.unlabeled_indices[...,None]], axis=-1)
+        
 
 
     def __len__(self):
@@ -108,242 +75,4 @@ class CardioDataset(Dataset):#(BasicPCDataset):
 
     def __getitem__(self, index):
         return self.pair
-        # pair = self.all_pairs[index]
-        # k1 = str(pair[0])
-        # k2 = str(pair[1])
-        # return self.get_data_2_index(k1,k2)
-
-
-    # def get_pair(self):
-    #     if True:#self.dataset_type == 'train':
-    #         num_of_shapes = [int(k.split("_")[0]) for k in self.data_h5.keys() if '_evects' in k]
-    #         self.all_pairs= list(combinations(num_of_shapes,2))
-    #     # else:
-    #     #     all_gt_keys = self.gt_h5.keys()
-    #     #     self.all_pairs = [(int(key.split('_')[0]), int(key.split('_')[1])) for key in all_gt_keys if key != 'indices']
-
-    # def get_sampling_indices(self, out_dict, data, d1, d2):
-    #     indices = self.persistant_indices.copy()
-    #     indices = indices[indices < d1.shape[0]][:self.hparams.n_points]
-    #     out_dict['indices'] = indices
-
-    #     indices_2 = self.persistant_indices.copy()
-    #     indices_2 = indices_2[indices_2 < d2.shape[0]][:self.hparams.n_points]
-    #     return indices, indices_2
-
-# class BasicPCDataset(Dataset):
-
-#     def __init__(self, hparams, dataset_type='train'):
-
-#         super(BasicPCDataset, self).__init__()
-#         self.dataset_type= dataset_type
-#         self.hparams = hparams
         
-
-#     def __len__(self):
-#         return len(self.all_pairs)
-
-#     # TODO - edit 
-#     def get_data_2_index(self, k1,k2):
-
-#         pair = k1 + '_' + k2
-#         out_dict = {'key': pair}
-#         keys_list =['verts', 'evects', 'a', 'evals'] 
-#         if self.dataset_type != 'train':
-#             keys_list = keys_list + ['geo_dist']
-
-#         data = self.data_h5
-
-#         if self.dataset_type in ['val','test'] and not self.gt_is_eys: # for SHREC dataset
-#             out_dict['gt'] = np.array(self.gt_h5[k1+'_'+k2])
-
-
-#         d1 = data[k1 + '_' + 'verts'] # source 
-#         d2 = data[k2 + '_' + 'verts'] # target
-
-
-#         min_num_points = min(d1.shape[0], d2.shape[0])
-#         do_sample=False
-#         if min_num_points > self.hparams.n_points:
-#             do_sample = True
-#             # Fixed indices for test and evaluation
-#             if self.dataset_type in ['val','test']: 
-#                 if not self.gt_is_eys:
-#                     if 'indices' in self.gt_h5: # SHREC
-#                         indices = np.array(self.gt_h5['indices'])
-#                     elif 'indices' in data:  
-#                         indices = np.array(data['indices'])
-#                 else:
-
-#                     if 'indices' in data: 
-#                         indices = np.array(data['indices'])
-#                     else:
-#                         indices = np.array(self.geo['indices'])
-#             else:
-#                 indices = np.random.choice(min_num_points, self.hparams.n_points, replace=False)
-
-#             out_dict['indices'] = indices
-            
-
-#             # Set the indices of the target ()
-#             if self.dataset_type in ['val','test'] and not self.gt_is_eys:
-#                 out_dict['gt'] = out_dict['gt'][indices]
-#                 indices_2 = out_dict['gt'].astype(int)
-#             else:
-#                 indices_2 = indices
-            
-
-#         for kk in keys_list:
-#             if kk == 'geo_dist':
-#                 key = k1 + '_' + kk
-#                 # TODO - fix me
-#                 if key in self.geo.keys():
-#                     d1 = np.array(self.geo[k1 + '_' + kk])
-#                     d2 = np.array(self.geo[k2 + '_' + kk]) 
-#                 else:
-#                     d1 = np.array(self.geo[k1 + '_' + kk.replace('geo','goe')])
-#                     d2 = np.array(self.geo[k2 + '_' + kk.replace('geo','goe')]) 
-#             else:
-#                 d1 = np.array(data[k1 + '_' + kk])
-#                 d2 = np.array(data[k2 + '_' + kk])
-           
-#             if kk =='a':
-#                 if len(d1.shape) == 2:
-#                     d1 = np.diag(d1)
-#                     d2 = np.diag(d2)
-            
-#             if do_sample and kk in ['verts', 'evects','a', 'geo_dist', 'faces' ]:
-#                 d1 = d1[indices]
-#                 d2 = d2[indices_2]
-#                 if kk == 'geo_dist':
-#                     d1 = d1[:,indices]
-#                     d2 = d2[:,indices_2]
-
-#             out_dict[kk]  = np.concatenate([d1[...,None], d2[...,None]], axis=-1)
-
-
-#         if self.dataset_type == 'train':
-#             out_dict['geo_dist'] = []
-        
-#         out_dict['evects'] = out_dict['evects'][:,:self.hparams.k_lbo,:]
-#         out_dict['evals'] = out_dict['evals'][:self.hparams.k_lbo,:]
-
-#         return out_dict
-
-
-# class SHREC(BasicPCDataset):
-
-#     def __init__(self, hparams, dataset_type='train'):
-
-#         super(SHREC, self).__init__(hparams, dataset_type)
-
-#         self.data_h5 = h5py.File(SHREC_DATA_PATH, 'r')
-#         self.geo = h5py.File(SHREC_GEO, 'r')
-#         if dataset_type in ['val','test']:
-#             self.gt_h5 = h5py.File(SHREC_GT_PATH, 'r')
-#         self.gt_is_eys = False
-#         self.get_pair()
-
-
-#     def __getitem__(self, index):
-#         pair = self.all_pairs[index]
-#         k1 = str(pair[0])
-#         k2 = str(pair[1])
-#         return self.get_data_2_index(k1,k2)
-
-
-#     def get_pair(self):
-#         if self.dataset_type == 'train':
-#             num_of_shapes = [int(k.split("_")[0]) for k in self.data_h5.keys() if '_evects' in k]
-#             self.all_pairs= list(combinations(num_of_shapes,2))
-#         else:
-#             all_gt_keys = self.gt_h5.keys()
-#             self.all_pairs = [(int(key.split('_')[0]), int(key.split('_')[1])) for key in all_gt_keys if key != 'indices']
-
-
-# class SURREAL(BasicPCDataset):
-
-#     def __init__(self, hparams, dataset_type='train'):
-
-#         super(SURREAL, self).__init__(hparams, dataset_type)
-#         if dataset_type == 'train':
-#             self.data_h5 = h5py.File(SURREAL_TRAIN, 'r')
-#         elif dataset_type == 'test':
-#             self.data_h5 = h5py.File(SURREAL_TEST, 'r')
-#             self.geo = self.data_h5
-#         self.dataset_type = dataset_type
-
-#         self.gt_is_eys = True
-
-#         self.get_pair()
-
-#     def get_pair(self):
-
-#         if self.dataset_type == 'train':
-#             list_path = SURREAL_TRAIN.replace('.hdf5', '_shapes.pkl')
-#             with open(list_path, 'rb') as ff:
-#                 num_of_shapes = pickle.load(ff)
-
-#             # num_of_shapes = [int(k.split("_")[0]) for k in self.data_h5.keys() if '_evects' in k]
-#             self.L = len(num_of_shapes) //2
-
-#             self.all_shpaes = num_of_shapes
-#         else:
-#             self.all_pairs= list(self.data_h5['test_samples'][:])
-#             self.L = len(self.all_pairs)
-
-    
-#     def __len__(self):
-#         return self.L 
-        
-#     def __getitem__(self, index):
-#         if self.dataset_type =='train':
-#             random.seed(index) 
-#             t1 = [self.all_shpaes.pop(random.randrange(len(self.all_shpaes))) for _ in range(2)]
-#             assert(t1[0]!=t1[1])
-#             k1 = str(t1[0])
-#             k2 = str(t1[1])
-#         else:
-#             pair = self.all_pairs[index]
-#             k1 = str(pair[0])
-#             k2 = str(pair[1])
-#         return self.get_data_2_index(k1,k2)
-
-
-
-# class FAUST(BasicPCDataset):
-
-#     def __init__(self, hparams, dataset_type='train'):
-
-#         super(FAUST, self).__init__(hparams, dataset_type)
-#         if dataset_type == 'train':
-#             self.data_h5 = h5py.File(FAUST_TRAIN, 'r')
-#             self.geo = h5py.File(FAUST_GEO, 'r')
-#         else:
-#             self.data_h5 = h5py.File(FAUST_TEST, 'r')
-#             self.geo = h5py.File(FAUST_GEO, 'r')
-
-#         self.dataset_type = dataset_type
-#         self.gt_is_eys = True
-#         self.get_pair()
-
-#     def get_pair(self):
-
-#         self.shape_list = [k.replace('_evects','') for k in self.data_h5.keys() if '_evects' in k ]
-#         self.all_pairs= list(combinations(list(range(len(self.shape_list ))),2))
-
-#     def __len__(self):
-#         return len(self.all_pairs)
-        
-#     def __getitem__(self, index):
-#         pair_ind = self.all_pairs[index]
-#         k1=str(self.shape_list[pair_ind[0]])
-#         k2=str(self.shape_list[pair_ind[1]])
-#         return self.get_data_2_index(k1,k2)
-
-
-
-
-# if __name__ == '__main__':
-
-

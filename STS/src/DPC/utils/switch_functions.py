@@ -1,18 +1,8 @@
-"""For all general switch functions based on flags."""
-
-# STS imports
-# import os, sys
-# print(os.path.abspath('./'))
-# sys.path.append(os.path.abspath('./'))
-
-from ...Spectral_data.pc_dataset import  create_sts_dataset, create_sts_dataset  # STS datasets
-# from data.point_cloud_db.tosca import TOSCA
-# from data.point_cloud_db.smal import SMAL
-# from data.point_cloud_db.surreal import surreal
-# from torch.utils.data.dataset import random_split
-from torch.utils.data import DataLoader
 import torch
 import torch.nn.functional as F
+
+from ...Spectral_data.pc_dataset import  create_sts_dataset, create_sts_dataset 
+
 
 def model_class_pointer(task_name, model_name):
     """Get pointer to class base on flags.
@@ -34,78 +24,11 @@ def model_class_pointer(task_name, model_name):
 
     raise Exception("Unkown arch")
 
-
-def get_dataloader(task_name, params):
-    """
-        Returns the relevant dataloader per task.
-        
-        Args:
-            task_name (str, optional): Define which dataloader to choose from. .
-        
-        Returns:
-            Dataloader
-        """
-    if task_name == "shape_corr":
-        return DataLoader
-    else:
-        raise Exception("No match for task_name in load_dataset")
-
 def load_dataset_spectral(hparams): # STS dataset selection
 
-    hparams.STS_test_dataset = hparams.dataset_name
-    test_dataset = create_sts_dataset(hparams)
-    hparams.STS_dataset = hparams.dataset_name
-    train_dataset, val_dataset = create_sts_dataset(hparams, return_dataset=True)
+    train_dataset = create_sts_dataset(hparams)
     
-    return train_dataset, val_dataset, test_dataset
-
-
-def load_dataset(params):
-    """
-    Return the correct dataset.
-
-    Args:
-        params (dict): The hyper-parameters
-    """
-    # from data.point_cloud_db.shrec import SHREC
-
-    # if params.dataset_name in ["shrec"]:
-    #     dataset = SHREC(params,"train")
-    #     train_size = int(len(dataset) * params.train_val_split)
-    #     train_dataset,val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-    #     test_dataset = SHREC(params,"test")
-    #     return train_dataset,val_dataset,test_dataset
-
-    # if params.dataset_name in ["smal"]:
-    #     dataset = SMAL(params,"train")
-    #     train_size = int(len(dataset) * params.train_val_split)
-    #     train_dataset,val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-    #     test_dataset = SMAL(params,"test")
-
-    #     # if(params.test_on_tosca):
-    #     #     test_dataset = TOSCA(params,"test")
-
-    #     return train_dataset,val_dataset,test_dataset
-
-    # if params.dataset_name in ["tosca"]:
-    #     dataset = TOSCA(params,"train")
-    #     train_size = int(len(dataset) * params.train_val_split)
-    #     train_dataset,val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-    #     test_dataset = TOSCA(params,"test")
-    #     return train_dataset,val_dataset,test_dataset
-
-    # if params.dataset_name in ["surreal"]:
-    #     train_dataset = surreal(params,"train")
-    #     val_dataset = surreal(params,"val")
-    #     if(params.test_on_shrec):
-    #         test_dataset = SHREC(params,"test")
-    #     else:
-    #         test_dataset = surreal(params,"test")
-
-    #     return train_dataset,val_dataset, test_dataset
-
-    raise Exception("No match for task_name in load_dataset")
-
+    return train_dataset
 
 def choose_optimizer(params, network_parameters):
     """
@@ -130,8 +53,6 @@ def choose_optimizer(params, network_parameters):
     else:
         raise Exception("No valid optimizer provided")
     return optimizer
-
-
 
 def measure_similarity(similarity_init, source_encoded, target_encoded):
     """
@@ -167,7 +88,6 @@ def measure_similarity(similarity_init, source_encoded, target_encoded):
         return (dist.max() - dist) / dist.max()
     if similarity_init == "multiplication":
         return torch.bmm(source_encoded, target_encoded.transpose(1, 2))
-
 
 def normalize_P(P, p_normalization, dim=None):
     """

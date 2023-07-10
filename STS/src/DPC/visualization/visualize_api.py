@@ -7,15 +7,18 @@ from matplotlib import image
 from numpy import asarray
 import torch
 import numpy as np
-
+import wandb
 
 def log_prefix(model,idx=0):
-    return "_".join([model.hparams.dataset_name, model.hparams.mode, "e%02d" % model.current_epoch, "b%02d" % model.hparams.batch_idx, "s%02d" % model.batch["source"]["id"][idx], "t%02d" % model.batch["target"]["id"][idx], model.hparams.arch])
+    return f"{model.hparams.dataset_name}_{model.hparams.mode}_epoch_{model.current_epoch}_timesteps_{model.batch['key'][0]}_{model.hparams.arch}"
 
-def visualize_P(model, batch, mode, extra_text, scalar_maps, source_face, source_vert, target_face, target_vert, P, mesh_or_pc, 
-    fwd_or_bac, horiz_space=0.1, grayed_indices=None, target_grayed=None, idx=None, 
-    color_map=None, img_log_name='', img_description='', pic_folder=None, use_log_prefix=True, write_image=True, write_html=True, vis_mitsuba=False):
-    pic_folder = os.path.join(model.hparams.default_root_dir,"visualization",mode)
+def visualize_P(model, batch, mode, extra_text, scalar_maps, source_face, source_vert, \
+                target_face, target_vert, P, mesh_or_pc, fwd_or_bac, horiz_space=0.1, \
+                grayed_indices=None, target_grayed=None, color_map=None, pic_folder=None, \
+                write_image=True, write_html=True, vis_mitsuba=False):
+
+    if pic_folder is None:
+        pic_folder = os.path.join(model.hparams.default_root_dir, "visualization", mode) 
 
     for i in range(len(P)):
         image_path = f"{pic_folder}/{extra_text}_{log_prefix(model,i)}.png"
@@ -32,7 +35,10 @@ def visualize_P(model, batch, mode, extra_text, scalar_maps, source_face, source
         else:
             scalar_maps_i = scalar_maps[i].detach().cpu().numpy()
 
-        viser = MeshVisualizer(dataset=model.hparams.dataset_name,display_up=hasattr(model.hparams,'display_id'))
+        viser = MeshVisualizer(
+            dataset=model.hparams.dataset_name,
+            display_up=hasattr(model.hparams,'display_id')
+            )
         fig, source_colors, target_colors = viser.visualize_mesh_pair(
             source_mesh=MeshContainer(source_vert[i], source_face[i]),
             target_mesh=MeshContainer(target_vert[i], target_face[i]),
@@ -50,8 +56,10 @@ def visualize_P(model, batch, mode, extra_text, scalar_maps, source_face, source
             write_html=write_html,
             vis_mitsuba=vis_mitsuba,
         )
-        model.logger.experiment.add_image(tag=os.path.basename(image_path),img_tensor=asarray(image.imread(image_path)),global_step=model.global_step,dataformats='HWC')
-
+        id_ = batch["key"][i]
+        model.logger.experiment.log(data={f"vis/p_{extra_text}_{id_}":wandb.Plotly(fig)})
+        #TODO fix
+        # model.logger.experiment.add_image(tag=os.path.basename(image_path),img_tensor=asarray(image.imread(image_path)),global_step=model.global_step,dataformats='HWC')
 
     return image_path, source_colors, target_colors
 
@@ -66,7 +74,9 @@ def visualize_pcs_same_fig(model, mode, extra_text, pcs, pcs_color, idx=None, im
 
         viser = MeshVisualizer(dataset=model.hparams.dataset_name, display_up=hasattr(model.hparams, 'display_id'))
         fig = viser.visualize_pcs_same_fig(save_path=image_path, pcs=[pc[i] for pc in pcs], pcs_color=pcs_color, write_image=write_image, write_html=write_html)
-        model.logger.experiment.add_image(tag=os.path.basename(image_path),img_tensor=asarray(image.imread(image_path)),global_step=model.global_step,dataformats='HWC')
+        model.logger.experiment.log(data={f"vis2/pcs_same_fig_{extra_text}":wandb.Plotly(fig)})
+#TODO fix logger
+        # model.logger.experiment.add_image(tag=os.path.basename(image_path),img_tensor=asarray(image.imread(image_path)),global_step=model.global_step,dataformats='HWC')
 
     return image_path
 
@@ -176,11 +186,11 @@ def visualize_reconstructions(model, batch, mode="train"):
         visualize_pcs_same_fig(model, mode, "target-target_self_recon", pcs, pcs_color, img_log_name='', write_image=write_image, write_html=write_html)
 
 
-def visualize_pair_corr(model, batch, mode="train", extra_text="", scalar_maps=None):
+def visualize_pair_corr(model, batch, pic_folder, mode="train", extra_text="", scalar_maps=None):
     source = batch["source"]
     target = batch["target"]
-    source_comf = batch["P_normalized"].max(2)[0]
-    target_comf = batch["P_normalized"].max(1)[0]
+    # source_comf = batch["P_normalized"].max(2)[0]
+    # target_comf = batch["P_normalized"].max(1)[0]
     none_face_list = [None for i in range(source["pos"].shape[0])]
 
     batch_for_vis = len(model.hparams.vis_idx_list) == 0 or model.hparams.batch_idx in model.hparams.vis_idx_list or str(model.hparams.batch_idx) in model.hparams.vis_idx_list
@@ -189,6 +199,38 @@ def visualize_pair_corr(model, batch, mode="train", extra_text="", scalar_maps=N
     write_html = model.hparams.write_html and batch_for_vis
 
     _, source_colors_fwd, target_colors_fwd = visualize_P(
-        model, batch, mode, "s_t_fwd", scalar_maps, none_face_list, source["pos"], none_face_list, target["pos"], batch["P_normalized"], "pc", "fwd", color_map=None, img_log_name='', write_image=write_image, write_html=write_html)
+        model=model, 
+        batch=batch, 
+        mode=mode, 
+        extra_text="s_t_fwd", 
+        scalar_maps=scalar_maps, 
+        source_face=none_face_list, 
+        source_vert=source["pos"], 
+        target_face=none_face_list, 
+        target_vert=target["pos"], 
+        P=batch["P_normalized"], 
+        mesh_or_pc="pc", 
+        fwd_or_bac="fwd", 
+        color_map=None, 
+        pic_folder=pic_folder,
+        write_image=write_image, 
+        write_html=write_html
+        )
     _, source_colors_bac, target_colors_bac = visualize_P(
-        model, batch, mode, "s_t_bac", scalar_maps, none_face_list, source["pos"], none_face_list, target["pos"], batch["P_normalized"], "pc", "bac", color_map=None, img_log_name='', write_image=write_image, write_html=write_html)
+        model=model, 
+        batch=batch, 
+        mode=mode, 
+        extra_text="s_t_bac", 
+        scalar_maps=scalar_maps, 
+        source_face=none_face_list, 
+        source_vert=source["pos"], 
+        target_face=none_face_list, 
+        target_vert=target["pos"], 
+        P=batch["P_normalized"], 
+        mesh_or_pc="pc", 
+        fwd_or_bac="bac", 
+        color_map=None, 
+        pic_folder=pic_folder,
+        write_image=write_image, 
+        write_html=write_html
+        )

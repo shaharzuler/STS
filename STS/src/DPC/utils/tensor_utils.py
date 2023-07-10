@@ -1,7 +1,7 @@
 import torch
 import numbers
 import numpy as np 
-import scipy
+from scipy.spatial import cKDTree
 
 def to_numpy(tensor):
     """Wrapper around .detach().cpu().numpy() """
@@ -50,6 +50,7 @@ def recursive_dict_tensor_to_cuda(dict_of_tensors: dict, subset_batch=None):
     return dict_of_tensors
 
 # source: https://pytorch-geometric.readthedocs.io/en/1.3.0/_modules/torch_cluster/knn.html
+# slight changes from source code
 def knn(x, y, k, batch_x=None, batch_y=None):
     r"""Finds for each element in :obj:`y` the :obj:`k` nearest points in
     :obj:`x`.
@@ -109,13 +110,12 @@ def knn(x, y, k, batch_x=None, batch_y=None):
     x = torch.cat([x, 2 * x.size(1) * batch_x.view(-1, 1).to(x.dtype)], dim=-1)
     y = torch.cat([y, 2 * y.size(1) * batch_y.view(-1, 1).to(y.dtype)], dim=-1)
 
-    tree = scipy.spatial.cKDTree(x.detach().numpy())
-    dist, col = tree.query(
-        y.detach().cpu(), k=k, distance_upper_bound=x.size(1))
+    tree = cKDTree(x.detach().cpu().numpy())
+    dist, col = tree.query(y.detach().cpu(), k=k, distance_upper_bound=x.size(1))
     dist = torch.from_numpy(dist).to(x.dtype)
     col = torch.from_numpy(col).to(torch.long)
     row = torch.arange(col.size(0), dtype=torch.long).view(-1, 1).repeat(1, k)
-    mask = 1 - torch.isinf(dist).view(-1)
+    mask = ~torch.isinf(dist).view(-1)
     row, col = row.view(-1)[mask], col.view(-1)[mask]
 
-    return torch.stack([row, col], dim=0)
+    return torch.stack([row, col], dim=0).to(x.device)

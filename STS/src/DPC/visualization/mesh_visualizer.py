@@ -227,8 +227,8 @@ class MeshVisualizer(object):
         else:  # it backward mapping, the target "draws" the colors from the source
             source_colors, target_colors = color_map_vis, mapping_colors
 
-        if not write_image and not write_html:
-            return None, source_colors, target_colors
+        # if not write_image and not write_html:
+        #     return None, source_colors, target_colors
 
         fig = make_subplots(
             rows=1,
