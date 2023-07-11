@@ -1,11 +1,10 @@
 {
     "task_name": "bar",
     "dataset_name": "cardio",
-    "dataset": "None",
     "arch": "DeepPointCorr",
     "similarity_init":"cosine",
     "p_normalization":"l2",
-    "-P_pow_factor": 2, 
+    "P_pow_factor": 2, 
     "sim_normalization":"softmax",
     "only_true_neighs":true, 
     "concat_xyz_to_inv": false, 

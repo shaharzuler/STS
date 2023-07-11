@@ -1,3 +1,14 @@
+A lean implementation of STS, designated for overfit. 
+
+TODO:
+1. move meshVisualizer to 3d_data_manager
+2. remove unused args from config.json
+3. increate num points in point cloud
+4. adjust loss ratios. currently spectral loss is 1E10 larger!
+5. configure GPU
+
+
+
 # STS
 Official implementation of our work as described in:
 "STS - Spectral Teacher Spatial Student for dense shape correspondence - Spectrum-Aware Real-Time Dense Shape Correspondence" (3DV 2022)
