@@ -176,6 +176,7 @@ class ShapeCorrTemplate(LightningModule):
             f.write(f"orig checkpoints: \n{checkpoints_path}")
 
         key=pred['key'][0]
+        keys_np = np.array([int(k) for k in key.split("_")])
         f =  h5py.File(os.path.join(self.hparams.output_inference_dir, "model_inference.hdf5"), 'a')
         f.create_dataset(name=f"p_{key}",                 data=to_numpy(pred["P_normalized"][0]),              compression="gzip")
         f.create_dataset(name=f"source_neigh_idxs_{key}", data=to_numpy(pred["source"]["neigh_idxs"][0]),      compression="gzip")
@@ -184,6 +185,6 @@ class ShapeCorrTemplate(LightningModule):
         f.create_dataset(name=f"target_{key}",            data=to_numpy(pred["target"]["pos"][0]),             compression="gzip")
         f.create_dataset(name=f"source_idxs_{key}",       data=to_numpy(self.train_dataset.template_indices),  compression="gzip")
         f.create_dataset(name=f"target_idxs_{key}",       data=to_numpy(self.train_dataset.unlabeled_indices), compression="gzip")
-        f.create_dataset(name=f"key",                     data=key,                                            compression="gzip")
+        f.create_dataset(name=f"key",                     data=keys_np,                                        compression="gzip")
 
         f.close()
