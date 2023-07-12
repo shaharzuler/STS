@@ -48,7 +48,7 @@ class ShapeCorrTemplate(LightningModule):
                 )
 
     def training_step(self, batch, batch_idx, mode="train"):
-        self.batch = self.covnert_batch_from_spectral_to_DPC(batch) # STS
+        self.batch = self.covnert_batch_from_spectral_to_DPC(batch) 
         
         self.losses = {}
         self.tracks = {}
@@ -78,8 +78,6 @@ class ShapeCorrTemplate(LightningModule):
 
         output = collections.OrderedDict({"loss": loss})
         return output
-
-        
 
     def vis_iter(self):
         return ((self.current_epoch % self.hparams.train_vis_interval) == 0) and self.hparams.show_vis
@@ -186,4 +184,6 @@ class ShapeCorrTemplate(LightningModule):
         f.create_dataset(name=f"target_{key}",            data=to_numpy(pred["target"]["pos"][0]),             compression="gzip")
         f.create_dataset(name=f"source_idxs_{key}",       data=to_numpy(self.train_dataset.template_indices),  compression="gzip")
         f.create_dataset(name=f"target_idxs_{key}",       data=to_numpy(self.train_dataset.unlabeled_indices), compression="gzip")
+        f.create_dataset(name=f"key",                     data=key,                                            compression="gzip")
+
         f.close()

@@ -11,7 +11,7 @@ import torch
 from .DPC.utils import pytorch_lightning_utils 
 from .DPC.models.DeepPointCorr.DeepPointCorr import DeepPointCorr
 
-def init(config):
+def _init(config):
     seed = 42
     pl.seed_everything(seed=seed)
     config.log_to_dir += time.strftime("_%Y%m%d_%H%M%S")
@@ -24,18 +24,18 @@ def init(config):
     return config
 
 
-def get_model_module(config):
+def _get_model_module(config):
     if(config.resume_from_checkpoint is not None):
         config = pytorch_lightning_utils.load_params_from_checkpoint(config)
     model_module = DeepPointCorr
     return model_module
 
-def get_logger(config):
+def _get_logger_(config):
     logger = WandbLogger(save_dir=config.wandb_save_dir, project=config.wandb_project_name, name=config.exp_name)
     logger.log_hyperparams(config)
     return logger
 
-def get_trainer(config):
+def _get_trainer(config):
     checkpoint_callback = ModelCheckpoint(
         dirpath=config.checkpoints_save_dir,
         monitor="train/train_tot_loss/epoch",
@@ -45,7 +45,7 @@ def get_trainer(config):
         save_top_k=3,
         period=config.save_checkpoints_every_n_epochs)
     
-    logger = get_logger(config)
+    logger = _get_logger_(config)
 
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback],
@@ -75,18 +75,18 @@ def get_trainer(config):
 def train_sts_dpc(config):
     config.mode='train'
     config.inference = False
-    config = init(config)
-    model = get_model_module(config)(hparams=config)
-    trainer, checkpoint_callback = get_trainer(config)
+    config = _init(config)
+    model = _get_model_module(config)(hparams=config)
+    trainer, checkpoint_callback = _get_trainer(config)
     trainer.fit(model)
     return checkpoint_callback.best_model_path, config
 
 def infer_sts_dpc(config, ckpts_path): 
-    model_module = get_model_module(config)
+    model_module = _get_model_module(config)
     config.max_epochs = 1
     config.output_inference_dir = os.path.join(config.log_to_dir, "inference" + time.strftime("_%Y%m%d_%H%M%S"))
     model = model_module.load_from_checkpoint(checkpoint_path=ckpts_path, hparams=config)
-    trainer, checkpoint_callback = get_trainer(config)
+    trainer, checkpoint_callback = _get_trainer(config)
     trainer.fit(model) ### pl "predict" and "test" of this pl version are buggy. I'm gonna use the fit and let it train on neutral for 1 epoch. instead of return, batch is stored in model as model.batch. ¯\_(ツ)_/¯
     pred = model.batch
     model.save_inference(pred, ckpts_path)

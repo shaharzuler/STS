@@ -6,6 +6,7 @@ TODO:
 3. increate num points in point cloud
 4. adjust loss ratios. currently spectral loss is 1E10 larger!
 5. configure GPU
+6. change paths in default config to Nones
 
 
 
