@@ -6,7 +6,8 @@ from pathlib import Path
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-import torch
+
+from .configs.config_readers import save_config
 
 from .DPC.utils import pytorch_lightning_utils 
 from .DPC.models.DeepPointCorr.DeepPointCorr import DeepPointCorr
@@ -76,6 +77,7 @@ def train_sts_dpc(config):
     config.mode='train'
     config.inference = False
     config = _init(config)
+    save_config(config, config.log_to_dir)
     model = _get_model_module(config)(hparams=config)
     trainer, checkpoint_callback = _get_trainer(config)
     trainer.fit(model)
