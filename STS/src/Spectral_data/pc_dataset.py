@@ -33,7 +33,7 @@ class CardioDataset(Dataset):
         unlabeled_timestep = config.unlabeled_timestep
         unlabeled_vertices = unlabeled_h5[f"{unlabeled_timestep}_vertices"][:]
 
-        self.num_points = min(template_vertices.shape[0], unlabeled_vertices.shape[0], self.config.n_points)
+        self.num_points = min(template_vertices.shape[0], unlabeled_vertices.shape[0], self.config.num_points)
 
         if os.path.isfile(self.config.consistant_shape_indices_filename):
             indices_npz_file = np.load(self.config.consistant_shape_indices_filename)
