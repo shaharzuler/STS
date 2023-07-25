@@ -34,13 +34,16 @@ class ShapeCorrTemplate(LightningModule):
         self.tracks = {}
  
     def setup(self, stage):
-        self.hparams.consistant_shape_indices_filename = os.path.join(self.config.log_to_dir, "consistant_shape_indices.npz")
+        if not hasattr(self.hparams, "consistant_shape_indices_filename"):
+            print("saving new consistant shape indices")
+            self.hparams.consistant_shape_indices_filename = os.path.join(self.config.log_to_dir, "consistant_shape_indices.npz")
         self.train_dataset = switch_functions.load_dataset_spectral(self.hparams) 
-        self.test_dataset = self.train_dataset#switch_functions.load_dataset_spectral(self.hparams) 
+        self.test_dataset = self.train_dataset
         self.store_data_indices()
     
     def store_data_indices(self):  
         if not os.path.isfile(self.hparams.consistant_shape_indices_filename):
+            print(f"saving new consistant shape indices at {self.hparams.consistant_shape_indices_filename}")
             np.savez(
                 self.hparams.consistant_shape_indices_filename,
                 template_indices=self.train_dataset.template_indices,

@@ -58,7 +58,7 @@ def _get_trainer(config):
         auto_lr_find=False,  
         gradient_clip_val=config.gradient_clip_val,
         benchmark=True,  
-        gpus=1,
+        gpus=config.gpus, 
         distributed_backend=None,
         limit_train_batches=config.limit_train_batches ,  
         terminate_on_nan=True,
