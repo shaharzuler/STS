@@ -23,17 +23,24 @@ def visualize_P(model, batch, mode, extra_text, scalar_maps, source_face, source
     for i in range(len(P)):
         image_path = f"{pic_folder}/{extra_text}_{log_prefix(model,i)}.png"
 
-        argmax_idx = 1 if fwd_or_bac == "fwd" else 0
-
-        if scalar_maps is None:
-            if isinstance(P[i], torch.Tensor):
-                scalar_maps_i = P[i].argmax(dim=argmax_idx).detach().cpu().numpy() if len(P.shape) == 3 else P
-            elif isinstance(P[i], np.ndarray):
-                scalar_maps_i = P[i].argmax(axis=argmax_idx) if len(P.shape) == 3 else P
-            else:
-                assert False, "Type error"
+        if fwd_or_bac == "fwd":
+            argmax_idx = 1
+        elif fwd_or_bac == "bac":
+            argmax_idx = 0
+        
+        # argmax_idx = 1 if fwd_or_bac == "fwd" else 0
+        if fwd_or_bac == "gt":
+            scalar_maps_i = batch["gt_corr"][0].detach().cpu().numpy() 
         else:
-            scalar_maps_i = scalar_maps[i].detach().cpu().numpy()
+            if scalar_maps is None:
+                if isinstance(P[i], torch.Tensor):
+                    scalar_maps_i = P[i].argmax(dim=argmax_idx).detach().cpu().numpy() if len(P.shape) == 3 else P
+                elif isinstance(P[i], np.ndarray):
+                    scalar_maps_i = P[i].argmax(axis=argmax_idx) if len(P.shape) == 3 else P
+                else:
+                    assert False, "Type error"
+            else:
+                scalar_maps_i = scalar_maps[i].detach().cpu().numpy()
 
         viser = MeshVisualizer(
             dataset=model.hparams.dataset_name,
@@ -229,6 +236,24 @@ def visualize_pair_corr(model, batch, pic_folder, mode="train", extra_text="", s
         P=batch["P_normalized"], 
         mesh_or_pc="pc", 
         fwd_or_bac="bac", 
+        color_map=None, 
+        pic_folder=pic_folder,
+        write_image=write_image, 
+        write_html=write_html
+        )
+    _, source_colors_bac, target_colors_bac = visualize_P(
+        model=model, 
+        batch=batch, 
+        mode=mode, 
+        extra_text="s_t_ground_truth", 
+        scalar_maps=scalar_maps, 
+        source_face=none_face_list, 
+        source_vert=source["pos"], 
+        target_face=none_face_list, 
+        target_vert=target["pos"], 
+        P=batch["P_normalized"], 
+        mesh_or_pc="pc", 
+        fwd_or_bac="gt", 
         color_map=None, 
         pic_folder=pic_folder,
         write_image=write_image, 

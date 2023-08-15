@@ -54,7 +54,7 @@
     "without_logger":false,
     "write_html":false,
     "write_image":false,
-    "log_to_dir": "/home/shahar/cardio_corr/my_packages/sts_project/STS/outputs",
+    "log_to_dir": null,
     "wandb_project_name": "cardio_corr",
     "display_id": 0,
     "resume_from_checkpoint": null,
@@ -78,6 +78,8 @@
     "show_vis":true,
     "rotate_pc_for_vis":true,
     "rotate_pc_angles":[0, 0, 0],
-    "save_checkpoints_every_n_epochs": 50
+    "save_checkpoints_every_n_epochs": 50,
+    "flow_gt_path": null,
+    "gpus": null
 }
 

@@ -238,9 +238,7 @@ class MeshVisualizer(object):
         fig.add_trace(
             self.plotly_mesh(
                 source_mesh,
-                np.concatenate(
-                    [source_colors, np.ones(source_colors.shape[0])[:, None]], axis=1
-                ),
+                np.concatenate([source_colors, np.ones(source_colors.shape[0])[:, None]], axis=1),
                 mesh_or_pc=mesh_or_pc,
             ),
             row=1,
@@ -250,10 +248,7 @@ class MeshVisualizer(object):
         fig.add_trace(
             self.plotly_mesh(
                 target_mesh,
-                np.concatenate(
-                    [target_colors, np.ones(target_colors.shape[0])[:, None]],
-                    axis=1,
-                ),
+                np.concatenate([target_colors, np.ones(target_colors.shape[0])[:, None]], axis=1,),
                 mesh_or_pc=mesh_or_pc,
             ),
             row=1,

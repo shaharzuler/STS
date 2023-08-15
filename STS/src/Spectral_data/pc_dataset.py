@@ -5,6 +5,8 @@ import numpy as np
 from torch.utils.data import Dataset
 import h5py
 
+from ..flow_to_corr import flow_to_corr
+
 
 
 
@@ -60,6 +62,9 @@ class CardioDataset(Dataset):
         unlabeled_area_weights_sampeled = unlabeled_area_weights[self.unlabeled_indices]
         unlabeled_eigenvalues = unlabeled_h5[f"{unlabeled_timestep}_eigenvalues"][:][:self.k_lbo]
 
+        gt_flow = np.load(self.config.gt_flow_path)
+        gt_corr = flow_to_corr(gt_flow, template_vertices_sampeled, unlabeled_vertices_sampeled)
+
         self.pair = {}
         self.pair['key'] = f"{template_timestep}_{unlabeled_timestep}"
         self.pair["vertices"] = np.concatenate([template_vertices_sampeled[...,None], unlabeled_vertices_sampeled[...,None]], axis=-1).astype(np.float16)
@@ -67,6 +72,7 @@ class CardioDataset(Dataset):
         self.pair["area_weights"] = np.concatenate([template_area_weights_sampeled[...,None], unlabeled_area_weights_sampeled[...,None]], axis=-1).astype(np.float16)
         self.pair["eigenvalues"] = np.concatenate([template_eigenvalues[...,None], unlabeled_eigenvalues[...,None]], axis=-1).astype(np.float16)
         self.pair["indices"] = np.concatenate([self.template_indices[...,None], self.unlabeled_indices[...,None]], axis=-1)
+        self.pair["gt_corr"] = gt_corr
         
 
 
