@@ -1,32 +1,20 @@
 
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
+import torch
+from .DPC.utils.tensor_utils import knn
 
-#TODO understand qwhich direction is the relevant!!!!!
 
 def flow_to_corr(flow:np.ndarray, target_pc:np.ndarray, source_pc:np.ndarray): #[N, 3] # duplication of flow_n_corr_utils.flow_to_corr()
-    # source_as_int = np.round(source_pc).astype(int)
-    # flow_in_source_coords = flow[source_as_int[:,0], source_as_int[:,1], source_as_int[:,2], :]
-    # target_estimated_coords = source_as_int + flow_in_source_coords
-    
-    # nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(target_estimated_coords)
-    # distances, indices = nbrs.kneighbors(target_pc)
-
-    # # now target_estimated_coords[indices][:,0,:] =~ target_pc
-    # # now source_pc[indices][:,0,:] corresponds to target_pc
-
-
     target_as_int = np.round(target_pc).astype(int)
     flow_in_target_coords = flow[target_as_int[:,0], target_as_int[:,1], target_as_int[:,2], :]
-    source_estimated_coords = target_as_int - flow_in_target_coords
+    source_estimated_coords = target_as_int + flow_in_target_coords
         
-    nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(source_estimated_coords)
-    distances, indices = nbrs.kneighbors(source_pc)
+    indices = knn(torch.tensor(source_estimated_coords), torch.tensor(source_pc), 1)[1]
 
-    # now source_estimated_coords[indices][:,0,:] =~ source_pc
-    # now target_pc[indices][:,0,:] corresponds to source_pc
+    # now source_estimated_coords[indices] =~ source_pc
+    # now target_pc[indices] corresponds to source_pc
 
-    return indices[:,0]
+    return indices
 
 
 # import h5py

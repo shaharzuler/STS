@@ -63,7 +63,7 @@ class CardioDataset(Dataset):
         unlabeled_eigenvalues = unlabeled_h5[f"{unlabeled_timestep}_eigenvalues"][:][:self.k_lbo]
 
         gt_flow = np.load(self.config.gt_flow_path)
-        gt_corr = flow_to_corr(gt_flow, template_vertices_sampeled, unlabeled_vertices_sampeled)
+        gt_corr = flow_to_corr(gt_flow, template_vertices_sampeled, unlabeled_vertices_sampeled) # template_vertices_sampeled[gt_corr] =~ unlabeled_vertices_sampeled
 
         self.pair = {}
         self.pair['key'] = f"{template_timestep}_{unlabeled_timestep}"
